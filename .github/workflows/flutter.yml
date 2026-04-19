@@ -65,21 +65,32 @@ jobs:
           flutter-version: '3.19.0'
           channel: 'stable'
       
-      - name: Generate Android platform files
+      - name: Generate Android wrapper files
         run: flutter create --org com.biblequotes --project-name bible_quotes --platforms android .
       
-      - name: Fix Android package name
+      - name: Restore ALL repo Android configs
         run: |
-          # Replace all occurrences of generated package with our actual package
-          sed -i 's/com\.biblequotes\.bible_quotes/com.biblequotes.app/g' android/app/build.gradle
-          # Remove duplicate MainActivity if created
+          # Restore every config file we have in git (versions must be consistent)
+          git checkout -- android/app/build.gradle \
+                          android/build.gradle \
+                          android/settings.gradle \
+                          android/gradle/wrapper/gradle-wrapper.properties \
+                          android/app/src/main/AndroidManifest.xml
+          # Remove flutter-create-generated duplicate MainActivity
           rm -rf android/app/src/main/kotlin/com/biblequotes/bible_quotes || true
-          echo "=== Verify build.gradle ==="
+          # Debug: show what we have
+          echo "=== build.gradle namespace/appId ==="
           grep -E "namespace|applicationId" android/app/build.gradle
-          echo "=== Verify settings.gradle versions ==="
-          grep -E "version" android/settings.gradle
-          echo "=== Verify gradle-wrapper ==="
+          echo "=== settings.gradle AGP version ==="
+          grep "com.android.application" android/settings.gradle
+          echo "=== gradle-wrapper.properties ==="
           cat android/gradle/wrapper/gradle-wrapper.properties
+          echo "=== AndroidManifest first line ==="
+          head -1 android/app/src/main/AndroidManifest.xml
+          echo "=== MainActivity.kt exists? ==="
+          ls -la android/app/src/main/kotlin/com/biblequotes/app/MainActivity.kt
+          echo "=== No duplicate MainActivity? ==="
+          find android -name "MainActivity.kt" -type f
       
       - name: Install dependencies
         run: flutter pub get
