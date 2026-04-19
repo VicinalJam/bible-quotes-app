@@ -159,14 +159,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           onPanUpdate: _onPanUpdate,
                           onPanEnd: _onPanEnd,
                           behavior: HitTestBehavior.translucent,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              _buildCross(),
-                              ..._buildCarouselCards(
-                                context, isPolish, carouselRadius, screenSize,
-                              ),
-                            ],
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final areaW = constraints.maxWidth;
+                              final areaH = constraints.maxHeight;
+                              return Stack(
+                                clipBehavior: Clip.none,
+                                alignment: Alignment.center,
+                                children: [
+                                  _buildCross(),
+                                  ..._buildCarouselCards(
+                                    context, isPolish, carouselRadius,
+                                    areaW, areaH,
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                         ),
                       ),
@@ -212,7 +220,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ..rotateY(t * 0.3 + _carouselAngle * 0.5)
             ..rotateX(0.15),
           child: CustomPaint(
-            size: const Size(90, 130),
+            size: const Size(120, 170),
             painter: _CrossPainter(rotationY: t * 0.3 + _carouselAngle * 0.5),
           ),
         );
@@ -221,13 +229,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   List<Widget> _buildCarouselCards(
-    BuildContext context, bool isPolish, double radius, Size screenSize,
+    BuildContext context, bool isPolish, double radius,
+    double areaW, double areaH,
   ) {
     final List<_CardData> cards = [];
+    final centerX = areaW / 2;
+    final centerY = areaH / 2;
 
     for (int i = 0; i < _cardCount; i++) {
       final angle = _carouselAngle + i * _anglePerCard;
-      final normalizedAngle = angle % (2 * pi);
       final x = sin(angle) * radius;
       final z = cos(angle);
       final scale = 0.55 + 0.45 * ((z + 1) / 2);
@@ -245,15 +255,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     cards.sort((a, b) => a.z.compareTo(b.z));
 
+    const baseW = 130.0;
+    const baseH = 160.0;
+
     return cards.map((card) {
       final mood = Mood.all[card.index];
-      final cardW = 130.0 * card.scale;
-      final cardH = 160.0 * card.scale;
-      final verticalOffset = -card.z * 20;
+      final verticalOffset = -card.z * 25;
 
       return Positioned(
-        left: screenSize.width / 2 + card.x - cardW / 2,
-        top: screenSize.height * 0.28 + verticalOffset,
+        left: centerX + card.x - baseW / 2,
+        top: centerY + verticalOffset - baseH / 2,
         child: GestureDetector(
           onTap: () => _onCardTap(card.index),
           child: Opacity(
@@ -267,9 +278,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: _CarouselCard(
                 mood: mood,
                 isPolish: isPolish,
-                width: cardW,
-                height: cardH,
-                isFront: card.z > 0.7,
+                width: baseW,
+                height: baseH,
+                isFront: card.z > 0.5,
               ),
             ),
           ),
