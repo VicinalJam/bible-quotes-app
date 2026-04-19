@@ -228,7 +228,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ..rotateY(t * 0.3 + _carouselAngle * 0.5)
             ..rotateX(0.15),
           child: CustomPaint(
-            size: const Size(120, 170),
+            size: const Size(240, 340),
             painter: _CrossPainter(rotationY: t * 0.3 + _carouselAngle * 0.5),
           ),
         );
@@ -263,12 +263,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     cards.sort((a, b) => a.z.compareTo(b.z));
 
-    const baseW = 160.0;
-    const baseH = 200.0;
+    const baseW = 320.0;
+    const baseH = 400.0;
 
     return cards.map((card) {
       final mood = Mood.all[card.index];
-      final verticalOffset = -card.z * 30;
+      final verticalOffset = -card.z * 50;
 
       return Positioned(
         left: centerX + card.x - baseW / 2,
@@ -409,8 +409,8 @@ class _CarouselCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 160,
-      height: 200,
+      width: 320,
+      height: 400,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         gradient: LinearGradient(
@@ -452,8 +452,8 @@ class _CarouselCard extends StatelessWidget {
               top: -30,
               right: -30,
               child: Container(
-                width: 100,
-                height: 100,
+                width: 200,
+                height: 200,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
@@ -469,8 +469,8 @@ class _CarouselCard extends StatelessWidget {
               bottom: -20,
               left: -20,
               child: Container(
-                width: 60,
-                height: 60,
+                width: 120,
+                height: 120,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: Colors.white.withOpacity(0.03),
@@ -483,8 +483,8 @@ class _CarouselCard extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      width: 68,
-                      height: 68,
+                      width: 136,
+                      height: 136,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: RadialGradient(
@@ -504,26 +504,26 @@ class _CarouselCard extends StatelessWidget {
                       child: Center(
                         child: Icon(
                           mood.icon,
-                          size: 34,
+                          size: 68,
                           color: Colors.white.withOpacity(0.9),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 28),
                     Text(
                       isPolish ? mood.displayName : mood.displayNameEn,
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         color: Colors.white.withOpacity(isFront ? 0.95 : 0.6),
-                        fontSize: 15,
+                        fontSize: 30,
                         letterSpacing: 0.3,
                       ),
                     ),
-                    const SizedBox(height: 7),
+                    const SizedBox(height: 14),
                     Container(
-                      width: 30,
-                      height: 3,
+                      width: 60,
+                      height: 6,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(2),
                         color: mood.color.withOpacity(isFront ? 0.6 : 0.25),
