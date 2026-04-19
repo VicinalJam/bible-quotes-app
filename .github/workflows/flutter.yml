@@ -51,10 +51,7 @@ jobs:
   build-android:
     runs-on: ubuntu-latest
     needs: [analyze, test]
-    # Build always runs, even if analyze/test fail
     if: always()
-    env:
-      FLUTTER_ROOT: /opt/hostedtoolcache/flutter/stable-3.19.0-x64
     steps:
       - uses: actions/checkout@v4
       
@@ -67,6 +64,9 @@ jobs:
         with:
           flutter-version: '3.19.0'
           channel: 'stable'
+      
+      - name: Regenerate Android platform files
+        run: flutter create --org com.biblequotes --project-name bible_quotes --platforms android .
       
       - name: Install dependencies
         run: flutter pub get
@@ -83,10 +83,7 @@ jobs:
   build-ios:
     runs-on: macos-14
     needs: [analyze, test]
-    # Build always runs, even if analyze/test fail
     if: always()
-    env:
-      FLUTTER_ROOT: /Users/runner/hostedtoolcache/flutter/stable-3.19.0-x64
     steps:
       - uses: actions/checkout@v4
       
@@ -95,13 +92,11 @@ jobs:
           flutter-version: '3.19.0'
           channel: 'stable'
       
+      - name: Regenerate iOS platform files
+        run: flutter create --org com.biblequotes --project-name bible_quotes --platforms ios .
+      
       - name: Install dependencies
         run: flutter pub get
-      
-      - name: Setup iOS Pods
-        run: |
-          cd ios
-          pod install --repo-update || true
       
       - name: Build iOS (no codesign)
         run: flutter build ios --release --no-codesign --no-tree-shake-icons
