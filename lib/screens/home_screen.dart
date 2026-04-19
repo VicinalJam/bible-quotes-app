@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/mood.dart';
 import '../providers/app_provider.dart';
 import '../providers/theme_provider.dart';
-import 'quote_screen.dart';
+import 'shake_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -290,7 +290,7 @@ class _MoodCardState extends State<_MoodCard> with SingleTickerProviderStateMixi
       onTapUp: (_) {
         setState(() => _pressed = false);
         _tapCtrl.reverse();
-        Navigator.push(context, _fadeScaleRoute(QuoteScreen(mood: mood)));
+        Navigator.push(context, _fadeScaleRoute(ShakeScreen(mood: mood)));
       },
       onTapCancel: () {
         setState(() => _pressed = false);
@@ -362,49 +362,55 @@ class _MoodCardState extends State<_MoodCard> with SingleTickerProviderStateMixi
                       ),
                     ),
                   ),
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: RadialGradient(
-                            colors: [
-                              mood.color.withOpacity(0.45),
-                              mood.color.withOpacity(0.08),
-                            ],
+                  Positioned.fill(
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: RadialGradient(
+                                colors: [
+                                  mood.color.withOpacity(0.45),
+                                  mood.color.withOpacity(0.08),
+                                ],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: mood.color.withOpacity(0.5),
+                                  blurRadius: 20,
+                                  spreadRadius: 2,
+                                ),
+                              ],
+                            ),
+                            child: Center(
+                              child: Icon(mood.icon, size: 32, color: Colors.white.withOpacity(0.9)),
+                            ),
                           ),
-                          boxShadow: [
-                            BoxShadow(
+                          const SizedBox(height: 12),
+                          Text(
+                            widget.isPolish ? mood.displayName : mood.displayNameEn,
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white.withOpacity(0.9),
+                                  letterSpacing: 0.3,
+                                ),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            width: 30,
+                            height: 3,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(2),
                               color: mood.color.withOpacity(0.5),
-                              blurRadius: 20,
-                              spreadRadius: 2,
                             ),
-                          ],
-                        ),
-                        child: Icon(mood.icon, size: 32, color: Colors.white.withOpacity(0.9)),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 14),
-                      Text(
-                        widget.isPolish ? mood.displayName : mood.displayNameEn,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white.withOpacity(0.9),
-                              letterSpacing: 0.3,
-                            ),
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        width: 30,
-                        height: 3,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(2),
-                          color: mood.color.withOpacity(0.5),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ],
               ),
