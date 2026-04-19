@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/mood.dart';
 import '../providers/app_provider.dart';
@@ -16,21 +17,35 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late AnimationController _headerController;
-  late AnimationController _cardsController;
+  late AnimationController _crossRotation;
+  late AnimationController _entranceController;
   late Animation<double> _headerFade;
   late Animation<Offset> _headerSlide;
-  final List<Animation<double>> _cardAnimations = [];
+  late Animation<double> _entranceFade;
+  late Animation<double> _entranceScale;
+
+  double _carouselAngle = 0;
+  double _velocity = 0;
+  int _selectedIndex = 0;
+
+  static const int _cardCount = 6;
+  static const double _anglePerCard = 2 * pi / _cardCount;
 
   @override
   void initState() {
     super.initState();
+
     _headerController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 700),
     );
-    _cardsController = AnimationController(
+    _crossRotation = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(seconds: 20),
+    )..repeat();
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
     );
 
     _headerFade = CurvedAnimation(parent: _headerController, curve: Curves.easeOut);
@@ -39,28 +54,69 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _headerController, curve: Curves.easeOutCubic));
 
-    for (int i = 0; i < Mood.all.length; i++) {
-      final start = (i * 0.12).clamp(0.0, 0.7);
-      final end = (start + 0.4).clamp(0.0, 1.0);
-      _cardAnimations.add(
-        CurvedAnimation(
-          parent: _cardsController,
-          curve: Interval(start, end, curve: Curves.easeOutBack),
-        ),
-      );
-    }
+    _entranceFade = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _entranceController, curve: const Interval(0.0, 0.6, curve: Curves.easeOut)),
+    );
+    _entranceScale = Tween<double>(begin: 0.5, end: 1.0).animate(
+      CurvedAnimation(parent: _entranceController, curve: const Interval(0.2, 1.0, curve: Curves.elasticOut)),
+    );
 
     _headerController.forward();
-    Future.delayed(const Duration(milliseconds: 200), () {
-      if (mounted) _cardsController.forward();
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) _entranceController.forward();
     });
   }
 
   @override
   void dispose() {
     _headerController.dispose();
-    _cardsController.dispose();
+    _crossRotation.dispose();
+    _entranceController.dispose();
     super.dispose();
+  }
+
+  void _onPanUpdate(DragUpdateDetails details) {
+    setState(() {
+      _carouselAngle += details.delta.dx * 0.008;
+      _velocity = details.delta.dx * 0.008;
+    });
+  }
+
+  void _onPanEnd(DragEndDetails details) {
+    final v = details.velocity.pixelsPerSecond.dx * 0.002;
+    _animateSnap(v);
+  }
+
+  void _animateSnap(double initialVelocity) {
+    final targetAngle = _carouselAngle + initialVelocity * 0.3;
+    final snappedIndex = (-targetAngle / _anglePerCard).round() % _cardCount;
+    final snappedAngle = -snappedIndex * _anglePerCard;
+
+    final controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+    final curve = CurvedAnimation(parent: controller, curve: Curves.easeOutCubic);
+    final startAngle = _carouselAngle;
+
+    controller.addListener(() {
+      setState(() {
+        _carouselAngle = startAngle + (snappedAngle - startAngle) * curve.value;
+      });
+    });
+    controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        setState(() => _selectedIndex = snappedIndex % _cardCount);
+        controller.dispose();
+      }
+    });
+    controller.forward();
+  }
+
+  void _onCardTap(int index) {
+    HapticFeedback.lightImpact();
+    final mood = Mood.all[index % _cardCount];
+    Navigator.push(context, _fadeScaleRoute(ShakeScreen(mood: mood)));
   }
 
   @override
@@ -68,6 +124,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final appProvider = context.watch<AppProvider>();
     final isPolish = appProvider.currentLanguage == 'pl';
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final screenSize = MediaQuery.of(context).size;
+    final carouselRadius = screenSize.width * 0.38;
 
     return Scaffold(
       body: Container(
@@ -87,52 +145,157 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           children: [
             CustomPaint(size: Size.infinite, painter: _StarsPainter()),
             SafeArea(
-              child: CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(child: _buildHeader(context, isPolish, isDark)),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                sliver: SliverToBoxAdapter(
-                  child: FadeTransition(
-                    opacity: _headerFade,
-                    child: Text(
-                      isPolish ? 'Jak się czujesz?' : 'How are you feeling?',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
+              child: Column(
+                children: [
+                  _buildHeader(context, isPolish, isDark),
+                  const SizedBox(height: 8),
+                  _buildTitle(context, isPolish),
+                  Expanded(
+                    child: FadeTransition(
+                      opacity: _entranceFade,
+                      child: ScaleTransition(
+                        scale: _entranceScale,
+                        child: GestureDetector(
+                          onPanUpdate: _onPanUpdate,
+                          onPanEnd: _onPanEnd,
+                          behavior: HitTestBehavior.translucent,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              _buildCross(),
+                              ..._buildCarouselCards(
+                                context, isPolish, carouselRadius, screenSize,
+                              ),
+                            ],
                           ),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  _buildBottomHint(context, isPolish),
+                  const SizedBox(height: 16),
+                ],
               ),
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                sliver: SliverGrid(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    childAspectRatio: 0.95,
-                    crossAxisSpacing: 14,
-                    mainAxisSpacing: 14,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final mood = Mood.all[index];
-                      return ScaleTransition(
-                        scale: _cardAnimations[index],
-                        child: FadeTransition(
-                          opacity: _cardAnimations[index],
-                          child: _MoodCard(mood: mood, isPolish: isPolish),
-                        ),
-                      );
-                    },
-                    childCount: Mood.all.length,
-                  ),
-                ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTitle(BuildContext context, bool isPolish) {
+    return FadeTransition(
+      opacity: _headerFade,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Text(
+          isPolish ? 'Jak się czujesz?' : 'How are you feeling?',
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+                color: Colors.white,
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 40)),
-            ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCross() {
+    return AnimatedBuilder(
+      animation: _crossRotation,
+      builder: (_, __) {
+        final t = _crossRotation.value * 2 * pi;
+        return Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.001)
+            ..rotateY(t * 0.3 + _carouselAngle * 0.5)
+            ..rotateX(0.15),
+          child: CustomPaint(
+            size: const Size(90, 130),
+            painter: _CrossPainter(rotationY: t * 0.3 + _carouselAngle * 0.5),
+          ),
+        );
+      },
+    );
+  }
+
+  List<Widget> _buildCarouselCards(
+    BuildContext context, bool isPolish, double radius, Size screenSize,
+  ) {
+    final List<_CardData> cards = [];
+
+    for (int i = 0; i < _cardCount; i++) {
+      final angle = _carouselAngle + i * _anglePerCard;
+      final normalizedAngle = angle % (2 * pi);
+      final x = sin(angle) * radius;
+      final z = cos(angle);
+      final scale = 0.55 + 0.45 * ((z + 1) / 2);
+      final opacity = 0.3 + 0.7 * ((z + 1) / 2);
+
+      cards.add(_CardData(
+        index: i,
+        x: x,
+        z: z,
+        scale: scale,
+        opacity: opacity,
+        angle: angle,
+      ));
+    }
+
+    cards.sort((a, b) => a.z.compareTo(b.z));
+
+    return cards.map((card) {
+      final mood = Mood.all[card.index];
+      final cardW = 130.0 * card.scale;
+      final cardH = 160.0 * card.scale;
+      final verticalOffset = -card.z * 20;
+
+      return Positioned(
+        left: screenSize.width / 2 + card.x - cardW / 2,
+        top: screenSize.height * 0.28 + verticalOffset,
+        child: GestureDetector(
+          onTap: () => _onCardTap(card.index),
+          child: Opacity(
+            opacity: card.opacity.clamp(0.0, 1.0),
+            child: Transform(
+              alignment: Alignment.center,
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, 0.0015)
+                ..rotateY(-card.angle * 0.15)
+                ..scale(card.scale),
+              child: _CarouselCard(
+                mood: mood,
+                isPolish: isPolish,
+                width: cardW,
+                height: cardH,
+                isFront: card.z > 0.7,
+              ),
+            ),
           ),
         ),
+      );
+    }).toList();
+  }
+
+  Widget _buildBottomHint(BuildContext context, bool isPolish) {
+    return FadeTransition(
+      opacity: _entranceFade,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.swipe_rounded, size: 18, color: Colors.white.withOpacity(0.3)),
+            const SizedBox(width: 8),
+            Text(
+              isPolish ? 'Przewiń palcem' : 'Swipe to explore',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.3),
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
           ],
         ),
       ),
@@ -145,12 +308,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       child: FadeTransition(
         opacity: _headerFade,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 12, 8),
+          padding: const EdgeInsets.fromLTRB(20, 12, 12, 0),
           child: Row(
             children: [
               Container(
-                width: 46,
-                height: 46,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: const LinearGradient(
@@ -164,22 +327,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ],
                 ),
-                child: const Icon(Icons.menu_book_rounded, color: Colors.white, size: 24),
+                child: const Icon(Icons.menu_book_rounded, color: Colors.white, size: 20),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       isPolish ? 'Witaj ✨' : 'Hello ✨',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: const Color(0xFFB794D6),
                           ),
                     ),
                     Text(
                       isPolish ? 'Znajdź inspirację' : 'Find inspiration',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w700,
                             color: Colors.white,
                           ),
@@ -194,6 +357,238 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
     );
   }
+}
+
+class _CardData {
+  final int index;
+  final double x, z, scale, opacity, angle;
+  _CardData({
+    required this.index,
+    required this.x,
+    required this.z,
+    required this.scale,
+    required this.opacity,
+    required this.angle,
+  });
+}
+
+class _CarouselCard extends StatelessWidget {
+  final Mood mood;
+  final bool isPolish;
+  final double width;
+  final double height;
+  final bool isFront;
+
+  const _CarouselCard({
+    required this.mood,
+    required this.isPolish,
+    required this.width,
+    required this.height,
+    required this.isFront,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 130,
+      height: 160,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            mood.color.withOpacity(isFront ? 0.3 : 0.15),
+            const Color(0xFF2A1545).withOpacity(0.85),
+          ],
+        ),
+        border: Border.all(
+          color: mood.color.withOpacity(isFront ? 0.4 : 0.15),
+          width: isFront ? 1.5 : 0.5,
+        ),
+        boxShadow: isFront
+            ? [
+                BoxShadow(
+                  color: mood.color.withOpacity(0.4),
+                  blurRadius: 24,
+                  spreadRadius: 2,
+                ),
+                BoxShadow(
+                  color: const Color(0xFF7B5EA7).withOpacity(0.15),
+                  blurRadius: 40,
+                ),
+              ]
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 8,
+                ),
+              ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Stack(
+          children: [
+            Positioned(
+              top: -20,
+              right: -20,
+              child: Container(
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      mood.color.withOpacity(0.2),
+                      mood.color.withOpacity(0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: RadialGradient(
+                          colors: [
+                            mood.color.withOpacity(0.5),
+                            mood.color.withOpacity(0.08),
+                          ],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: mood.color.withOpacity(isFront ? 0.6 : 0.2),
+                            blurRadius: isFront ? 20 : 8,
+                            spreadRadius: isFront ? 3 : 0,
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Icon(
+                          mood.icon,
+                          size: 26,
+                          color: Colors.white.withOpacity(0.9),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      isPolish ? mood.displayName : mood.displayNameEn,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white.withOpacity(isFront ? 0.95 : 0.6),
+                        fontSize: 13,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Container(
+                      width: 24,
+                      height: 2.5,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(2),
+                        color: mood.color.withOpacity(isFront ? 0.6 : 0.25),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CrossPainter extends CustomPainter {
+  final double rotationY;
+  _CrossPainter({required this.rotationY});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+
+    final cosY = cos(rotationY);
+    final depth = cosY.abs();
+
+    final hW = size.width * 0.12 * (0.4 + 0.6 * depth);
+    final vH = size.height * 0.48;
+    final hH = size.height * 0.12;
+    final crossTop = cy - vH / 2;
+    final armY = crossTop + vH * 0.28;
+
+    final glowPaint = Paint()
+      ..color = const Color(0xFFD4AF37).withOpacity(0.3)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 20);
+
+    canvas.drawRect(
+      Rect.fromCenter(center: Offset(cx, cy), width: hW * 4, height: vH * 0.8),
+      glowPaint,
+    );
+
+    final mainGrad = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        const Color(0xFFFFD700).withOpacity(0.9),
+        const Color(0xFFD4AF37).withOpacity(0.85),
+        const Color(0xFFB8941F).withOpacity(0.7),
+      ],
+    );
+
+    final vertRect = Rect.fromLTWH(cx - hW, crossTop, hW * 2, vH);
+    final vertPaint = Paint()
+      ..shader = mainGrad.createShader(vertRect);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(vertRect, const Radius.circular(4)),
+      vertPaint,
+    );
+
+    final armW = size.width * 0.45;
+    final armRect = Rect.fromLTWH(cx - armW, armY, armW * 2, hH);
+    final armPaint = Paint()
+      ..shader = mainGrad.createShader(armRect);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(armRect, const Radius.circular(4)),
+      armPaint,
+    );
+
+    final highlightPaint = Paint()
+      ..color = Colors.white.withOpacity(0.25 * depth);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(cx - hW * 0.3, crossTop + 4, hW * 0.6, vH - 8),
+        const Radius.circular(3),
+      ),
+      highlightPaint,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(cx - armW + 4, armY + 2, armW * 2 - 8, hH * 0.35),
+        const Radius.circular(2),
+      ),
+      highlightPaint,
+    );
+
+    final centerGlow = Paint()
+      ..color = Colors.white.withOpacity(0.3)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+    canvas.drawCircle(Offset(cx, armY + hH / 2), 8, centerGlow);
+  }
+
+  @override
+  bool shouldRepaint(_CrossPainter oldDelegate) =>
+      oldDelegate.rotationY != rotationY;
 }
 
 class _SettingsButton extends StatefulWidget {
@@ -248,180 +643,6 @@ class _SettingsButtonState extends State<_SettingsButton>
   }
 }
 
-class _MoodCard extends StatefulWidget {
-  final Mood mood;
-  final bool isPolish;
-
-  const _MoodCard({required this.mood, required this.isPolish});
-
-  @override
-  State<_MoodCard> createState() => _MoodCardState();
-}
-
-class _MoodCardState extends State<_MoodCard> with SingleTickerProviderStateMixin {
-  late AnimationController _tapCtrl;
-  late Animation<double> _scale;
-  bool _pressed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _tapCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 120));
-    _scale = Tween<double>(begin: 1.0, end: 0.93).animate(
-      CurvedAnimation(parent: _tapCtrl, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _tapCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final mood = widget.mood;
-
-    return GestureDetector(
-      onTapDown: (_) {
-        setState(() => _pressed = true);
-        _tapCtrl.forward();
-      },
-      onTapUp: (_) {
-        setState(() => _pressed = false);
-        _tapCtrl.reverse();
-        Navigator.push(context, _fadeScaleRoute(ShakeScreen(mood: mood)));
-      },
-      onTapCancel: () {
-        setState(() => _pressed = false);
-        _tapCtrl.reverse();
-      },
-      child: AnimatedBuilder(
-        animation: _scale,
-        builder: (_, __) => Transform.scale(
-          scale: _scale.value,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  mood.color.withOpacity(_pressed ? 0.4 : 0.22),
-                  const Color(0xFF2A1545).withOpacity(_pressed ? 0.9 : 0.7),
-                ],
-              ),
-              border: Border.all(
-                color: mood.color.withOpacity(_pressed ? 0.6 : 0.25),
-                width: _pressed ? 2 : 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: mood.color.withOpacity(_pressed ? 0.5 : 0.2),
-                  blurRadius: _pressed ? 24 : 12,
-                  offset: const Offset(0, 6),
-                  spreadRadius: _pressed ? 3 : 0,
-                ),
-                BoxShadow(
-                  color: const Color(0xFF7B5EA7).withOpacity(0.08),
-                  blurRadius: 30,
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Stack(
-                children: [
-                  Positioned(
-                    top: -30,
-                    right: -30,
-                    child: Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [
-                            mood.color.withOpacity(0.15),
-                            mood.color.withOpacity(0),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: -20,
-                    left: -20,
-                    child: Container(
-                      width: 60,
-                      height: 60,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.03),
-                      ),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 64,
-                            height: 64,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: RadialGradient(
-                                colors: [
-                                  mood.color.withOpacity(0.45),
-                                  mood.color.withOpacity(0.08),
-                                ],
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: mood.color.withOpacity(0.5),
-                                  blurRadius: 20,
-                                  spreadRadius: 2,
-                                ),
-                              ],
-                            ),
-                            child: Center(
-                              child: Icon(mood.icon, size: 32, color: Colors.white.withOpacity(0.9)),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            widget.isPolish ? mood.displayName : mood.displayNameEn,
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white.withOpacity(0.9),
-                                  letterSpacing: 0.3,
-                                ),
-                          ),
-                          const SizedBox(height: 6),
-                          Container(
-                            width: 30,
-                            height: 3,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(2),
-                              color: mood.color.withOpacity(0.5),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 PageRoute _slideRoute(Widget page) {
   return PageRouteBuilder(
     pageBuilder: (_, animation, __) => page,
@@ -461,7 +682,7 @@ class _StarsPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    for (int i = 0; i < 60; i++) {
+    for (int i = 0; i < 80; i++) {
       final x = _rng.nextDouble() * size.width;
       final y = _rng.nextDouble() * size.height;
       final r = _rng.nextDouble() * 1.5 + 0.3;
