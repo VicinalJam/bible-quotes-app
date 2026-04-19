@@ -72,45 +72,53 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _headerController.dispose();
     _crossRotation.dispose();
     _entranceController.dispose();
+    _snapController?.dispose();
     super.dispose();
   }
 
+  AnimationController? _snapController;
+
   void _onPanUpdate(DragUpdateDetails details) {
+    _snapController?.stop();
+    _snapController?.dispose();
+    _snapController = null;
     setState(() {
-      _carouselAngle += details.delta.dx * 0.008;
-      _velocity = details.delta.dx * 0.008;
+      _carouselAngle += details.delta.dx * 0.012;
+      _velocity = details.delta.dx * 0.012;
     });
   }
 
   void _onPanEnd(DragEndDetails details) {
-    final v = details.velocity.pixelsPerSecond.dx * 0.002;
-    _animateSnap(v);
+    final flingVelocity = details.velocity.pixelsPerSecond.dx * 0.004;
+    _animateWithMomentum(flingVelocity);
   }
 
-  void _animateSnap(double initialVelocity) {
-    final targetAngle = _carouselAngle + initialVelocity * 0.3;
+  void _animateWithMomentum(double flingVelocity) {
+    final targetAngle = _carouselAngle + flingVelocity * 0.5;
     final snappedIndex = (-targetAngle / _anglePerCard).round() % _cardCount;
     final snappedAngle = -snappedIndex * _anglePerCard;
 
-    final controller = AnimationController(
+    final duration = (flingVelocity.abs() * 200 + 300).clamp(300, 800).toInt();
+
+    _snapController?.dispose();
+    _snapController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
+      duration: Duration(milliseconds: duration),
     );
-    final curve = CurvedAnimation(parent: controller, curve: Curves.easeOutCubic);
+    final curve = CurvedAnimation(parent: _snapController!, curve: Curves.easeOutQuart);
     final startAngle = _carouselAngle;
 
-    controller.addListener(() {
+    _snapController!.addListener(() {
       setState(() {
         _carouselAngle = startAngle + (snappedAngle - startAngle) * curve.value;
       });
     });
-    controller.addStatusListener((status) {
+    _snapController!.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         setState(() => _selectedIndex = snappedIndex % _cardCount);
-        controller.dispose();
       }
     });
-    controller.forward();
+    _snapController!.forward();
   }
 
   void _onCardTap(int index) {
@@ -125,7 +133,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final isPolish = appProvider.currentLanguage == 'pl';
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final screenSize = MediaQuery.of(context).size;
-    final carouselRadius = screenSize.width * 0.38;
+    final carouselRadius = screenSize.width * 0.44;
 
     return Scaffold(
       body: Container(
@@ -240,8 +248,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final angle = _carouselAngle + i * _anglePerCard;
       final x = sin(angle) * radius;
       final z = cos(angle);
-      final scale = 0.55 + 0.45 * ((z + 1) / 2);
-      final opacity = 0.3 + 0.7 * ((z + 1) / 2);
+      final scale = 0.5 + 0.5 * ((z + 1) / 2);
+      final opacity = 0.25 + 0.75 * ((z + 1) / 2);
 
       cards.add(_CardData(
         index: i,
@@ -255,12 +263,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     cards.sort((a, b) => a.z.compareTo(b.z));
 
-    const baseW = 130.0;
-    const baseH = 160.0;
+    const baseW = 160.0;
+    const baseH = 200.0;
 
     return cards.map((card) {
       final mood = Mood.all[card.index];
-      final verticalOffset = -card.z * 25;
+      final verticalOffset = -card.z * 30;
 
       return Positioned(
         left: centerX + card.x - baseW / 2,
@@ -401,51 +409,51 @@ class _CarouselCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 130,
-      height: 160,
+      width: 160,
+      height: 200,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(24),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            mood.color.withOpacity(isFront ? 0.3 : 0.15),
-            const Color(0xFF2A1545).withOpacity(0.85),
+            mood.color.withOpacity(isFront ? 0.35 : 0.15),
+            const Color(0xFF2A1545).withOpacity(0.9),
           ],
         ),
         border: Border.all(
-          color: mood.color.withOpacity(isFront ? 0.4 : 0.15),
+          color: mood.color.withOpacity(isFront ? 0.45 : 0.15),
           width: isFront ? 1.5 : 0.5,
         ),
         boxShadow: isFront
             ? [
                 BoxShadow(
-                  color: mood.color.withOpacity(0.4),
-                  blurRadius: 24,
-                  spreadRadius: 2,
+                  color: mood.color.withOpacity(0.45),
+                  blurRadius: 30,
+                  spreadRadius: 4,
                 ),
                 BoxShadow(
-                  color: const Color(0xFF7B5EA7).withOpacity(0.15),
-                  blurRadius: 40,
+                  color: const Color(0xFF7B5EA7).withOpacity(0.2),
+                  blurRadius: 50,
                 ),
               ]
             : [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.3),
-                  blurRadius: 8,
+                  blurRadius: 10,
                 ),
               ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(24),
         child: Stack(
           children: [
             Positioned(
-              top: -20,
-              right: -20,
+              top: -30,
+              right: -30,
               child: Container(
-                width: 70,
-                height: 70,
+                width: 100,
+                height: 100,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
@@ -457,14 +465,26 @@ class _CarouselCard extends StatelessWidget {
                 ),
               ),
             ),
+            Positioned(
+              bottom: -20,
+              left: -20,
+              child: Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.03),
+                ),
+              ),
+            ),
             Positioned.fill(
               child: Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      width: 52,
-                      height: 52,
+                      width: 68,
+                      height: 68,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: RadialGradient(
@@ -476,34 +496,34 @@ class _CarouselCard extends StatelessWidget {
                         boxShadow: [
                           BoxShadow(
                             color: mood.color.withOpacity(isFront ? 0.6 : 0.2),
-                            blurRadius: isFront ? 20 : 8,
-                            spreadRadius: isFront ? 3 : 0,
+                            blurRadius: isFront ? 24 : 10,
+                            spreadRadius: isFront ? 4 : 0,
                           ),
                         ],
                       ),
                       child: Center(
                         child: Icon(
                           mood.icon,
-                          size: 26,
+                          size: 34,
                           color: Colors.white.withOpacity(0.9),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 14),
                     Text(
                       isPolish ? mood.displayName : mood.displayNameEn,
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         color: Colors.white.withOpacity(isFront ? 0.95 : 0.6),
-                        fontSize: 13,
+                        fontSize: 15,
                         letterSpacing: 0.3,
                       ),
                     ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 7),
                     Container(
-                      width: 24,
-                      height: 2.5,
+                      width: 30,
+                      height: 3,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(2),
                         color: mood.color.withOpacity(isFront ? 0.6 : 0.25),
