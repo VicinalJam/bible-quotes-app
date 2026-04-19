@@ -75,7 +75,9 @@ jobs:
                           android/build.gradle \
                           android/settings.gradle \
                           android/gradle/wrapper/gradle-wrapper.properties \
-                          android/app/src/main/AndroidManifest.xml
+                          android/app/src/main/AndroidManifest.xml \
+                          android/app/src/main/res/values/styles.xml \
+                          android/app/src/main/res/drawable/launch_background.xml
           # Remove flutter-create-generated duplicate MainActivity
           rm -rf android/app/src/main/kotlin/com/biblequotes/bible_quotes || true
           # Debug: show what we have
